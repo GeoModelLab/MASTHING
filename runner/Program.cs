@@ -25,37 +25,42 @@ using runner.data;
 using System.Text.Json;
 
 #region read the configuration file (pixelConfig.config)
+//first CLI argument overrides the default config file name.
 string fileName = args.Length > 0 ? args[0] : "MASTHINGconfig.json";
 
+//echo the configuration file path so the log captures exactly which run was launched.
 Console.WriteLine("CONFIG FILE: {0}", fileName);
 
+//load the whole JSON into a string and deserialise into the typed root record (see bottom of this file).
 string jsonString = File.ReadAllText(fileName);
 var config = JsonSerializer.Deserialize<root>(jsonString);
 
+//guard against a malformed / empty config — we need the settings bag to proceed.
 if (config?.settings == null)
 {
     throw new Exception("Invalid configuration file: missing settings");
 }
 
 
-//set calibration variable
+//calibration target ("phenology" → MODIS NDVI; "seeds" → tree-level seed counts).
 string calibrationVariable = config.settings.calibrationVariable;
+//calibration mode ("single" → per-site loop; anything else → one pooled calibration).
 string calibrationType = config.settings.calibrationType;
 Console.WriteLine("CALIBRATION TYPE: {0}", calibrationType);
 
-//set model version
+//model formulation ("RB" / "RB+WC" / "RBxWC").
 string modelVersion = config.settings.modelVersion;
 Console.WriteLine("MODEL VERSION: {0}", modelVersion);
 
-//set weather directory
+//folder containing the per-grid daily weather CSVs (named "<lat>_<lon>.csv").
 var weatherDir = config.settings.weatherDirectory;
 Console.WriteLine("WEATHER DIRECTORY: {0}", weatherDir);
 
-//set simplex parameters
+//multi-start simplex hyperparameters — parsed from string to int here once.
 int numberSimplexes = int.Parse(config.settings.numberSimplexes);
 int numberIterations = int.Parse(config.settings.numberIterations);
 
-//set species
+//species selector — used to pick the correct rows out of the parameter CSVs.
 string species = config.settings.species;
 Console.WriteLine("PLANT SPECIES: {0}", species);
 
@@ -63,17 +68,19 @@ Console.WriteLine("PLANT SPECIES: {0}", species);
 
 #region read reference data
 
-//instance of reference reader class
+//reader responsible for parsing the reference-data CSVs into Site/tree dictionaries.
 referenceReader referenceReader = new referenceReader();
 
-//read reference data
+//dispatch on calibrationVariable: MODIS NDVI for phenology, beech masting records for seeds.
 var allSites = new Dictionary<string, Site>();
 if (calibrationVariable == "phenology")
 {
+    //six-column NDVI CSV: site, year, doy, lat, long, ndvi.
     allSites = referenceReader.readReferenceDataPheno(@"files//referenceData//referencePhenology.csv");
 }
 else
 {
+    //seven-column seeds CSV: site, year, treeId, lat, long, seeds, dbh.
     allSites = referenceReader.readReferenceDataSeeds(@"files//referenceData//referenceSeeds.csv");
 }
 
@@ -81,59 +88,66 @@ else
 #endregion
 
 #region get all weather files
-//message to console
+//progress trace so the user sees the weather-discovery step.
 Console.WriteLine("reading weather files....");
-//optimizer class
+//the optimizer is the long-lived object that will hold all the per-run state.
 optimizer optimizer = new optimizer();
+//push the model formulation onto the optimizer up front.
 optimizer.modelVersion = config.settings.modelVersion;
 
-//read weather files
+//enumerate all CSVs in the weather directory — the optimizer matches pixels to grids via filename.
 var weatherFiles = new DirectoryInfo(weatherDir).GetFiles();
 optimizer.allWeatherDataFiles = weatherFiles.Select(file => Path.GetFileName(file.FullName)).ToList();
-optimizer.weatherDir = weatherDir;            
+//and the directory itself so the optimizer can build full paths on demand.
+optimizer.weatherDir = weatherDir;
 #endregion
 
 #region read MASTHING parameter files
 
-//list of already calibrated files
+//inventory of already-calibrated output files — used to skip sites that have already been processed.
 var calibratedFilesInfo = new DirectoryInfo(@"calibratedPixels").GetFiles();
 
-// Convert FileInfo[] to List<string>
+//trim the file extensions so the list holds plain site identifiers.
 List<string> calibratedFiles = calibratedFilesInfo.Select(file => Path.GetFileNameWithoutExtension(file.FullName)).ToList();
 
-//read parameter file with limits
+//parameter CSV reader — loads the species-specific search envelopes.
 paramReader paramReader = new paramReader();
 if (calibrationVariable == "phenology")
 {
+    //phenology calibration only needs the SWELL parameter set.
     optimizer.species_nameParam = paramReader.read(@"files//parametersData//SWELLparameters.csv", species);
 }
 else
 {
+    //seeds calibration needs the full MASTHING set …
     optimizer.species_nameParam = paramReader.read(@"files//parametersData//MASTHINGparameters.csv", species);
-    // Merge SWELL (phenology) parameters into the main species_nameParam dictionary
+    //… plus the SWELL (phenology) parameters merged in, so the full model can be exercised in a single pass.
     var swellParams = paramReader.read(@"files//parametersData//SWELLparameters.csv", species);
     foreach (var param in swellParams[species])
     {
         optimizer.species_nameParam[species][param.Key] = param.Value;
     }
 }
-//data structure to store calibrated parameters
+//container for the per-parameter calibrated values extracted from the simplex results matrix.
 Dictionary<string, float> paramCalibValue = new Dictionary<string, float>();
 #endregion
 
-//set start pixel and number of pixels (for calibration)
+//optional list of site ids to calibrate individually (used only when calibrationType == "single").
 List<string> sitesToRun = config?.settings?.sitesToRun ?? new List<string>();
 
-//set calibration variable
+//propagate the run-level flags to the optimizer so its branches see them.
 optimizer.calibrationVariable = calibrationVariable;
 optimizer.calibrationType = calibrationType;
 
 #region define optimizer settings
-//optimizer instance
+//multi-start downhill-simplex driver from UNIMI.optimizer.
 MultiStartSimplex msx = new MultiStartSimplex();
 
+//number of simplex restarts (controls global exploration).
 msx.NofSimplexes = numberSimplexes;
+//convergence tolerance on the objective function.
 msx.Ftol = 0.001;
+//hard cap on iterations per simplex (safety net against stalled runs).
 msx.Itmax = numberIterations;
 #endregion
 
@@ -141,71 +155,76 @@ msx.Itmax = numberIterations;
 if (calibrationType == "single")
 {
     #region loop over pixels
+    //per-site calibration: each iteration independently calibrates one site end-to-end.
     foreach (var site in sitesToRun)
     {
-        //get pixel ID
+        //alias for clarity.
         string siteID = site;
 
-        //message to console
+        //progress trace at the start of each site.
         Console.WriteLine("site {0} start", siteID);
 
-        //set pixel to calibrate
+        //filter the full site dictionary down to just this one site for the optimizer.
         optimizer.idSite = allSites.Where(x => x.Key == siteID).ToDictionary(p => p.Key, p => p.Value); ;
 
         #region define parameters settings for calibration
-        //count parameters under calibration
+        //count of active (calibrated) parameters — sets the simplex dimensionality.
         int paramCalibrated = 0;
-        //loop over parameters
+        //first pass: count parameters whose calibration flag is non-empty.
         foreach (var name in optimizer.species_nameParam[species].Keys)
         {
-            //add parameter to calibration if calibration field is not empty (x)
+            //non-empty calibration flag → this parameter joins the simplex.
             if (optimizer.species_nameParam[species][name].calibration != "") { paramCalibrated++; }
 
         }
-        //set number of dimension in the matrix
+        //allocate the (min, max) envelope matrix used by the simplex bounds check.
         double[,] Limits = new double[paramCalibrated, 2];
 
-        //parameters out of calibration
+        //dictionary for parameters that are NOT being calibrated — kept at their fixed CSV value.
         Dictionary<string, float> param_outCalibration = new Dictionary<string, float>();
-        //populate limits 
-        //count parameters under calibration
+        //second pass: populate Limits[] for active parameters, param_outCalibration for the rest.
         int i = 0;
         foreach (var name in optimizer.species_nameParam[species].Keys)
         {
             if (optimizer.species_nameParam[species][name].calibration != "")
             {
+                //[i,1] is the upper bound, [i,0] is the lower bound.
                 Limits[i, 1] = optimizer.species_nameParam[species][name].maximum;
                 Limits[i, 0] = optimizer.species_nameParam[species][name].minimum;
                 i++;
             }
             else
             {
+                //latch the nominal value as the fixed non-calibrated value.
                 param_outCalibration.Add(name, optimizer.species_nameParam[species][name].value);
             }
         }
+        //placeholder out-parameter — the simplex resizes it to (1, paramCalibrated) inside Multistart.
         double[,] results = new double[1, 1];
         #endregion
 
-        //set optimizer calibration properties
+        //push the species tag and the fixed-parameter dictionary onto the optimizer.
         optimizer.species = species;
         optimizer.param_outCalibration = param_outCalibration;
 
-        //run optimizer
+        //launch the multi-start simplex — this is the heavy lifting.
         msx.Multistart(optimizer, paramCalibrated, Limits, out results);
 
-        //get calibrated parameters
+        //harvest the best parameter vector from the simplex result matrix.
         paramCalibValue = new Dictionary<string, float>();
         int count = 0;
 
         #region write calibrated parameters
+        //CSV schema for the output file.
         string header = "param,value";
         List<string> writeParam = new List<string>();
         writeParam.Add(header);
+        //walk the parameters in the same order the optimizer did so indices align with `results`.
         foreach (var param in optimizer.species_nameParam[species].Keys)
         {
             if (optimizer.species_nameParam[species][param].calibration != "")
             {
-                //write a line for each parameter
+                //emit a "name,value" row and mirror the value into paramCalibValue for the one-shot run.
                 string line = "";
                 line += param + ",";
                 line += results[0, count];
@@ -215,27 +234,26 @@ if (calibrationType == "single")
             }
         }
 
-        //write calibrated parameters to file
-        // directory
+        //persist the per-site calibrated parameters to calibratedPixels/<variable>/.
         string dir = Path.Combine("calibratedPixels", calibrationVariable);
 
-        // create the directory if it does not exist
+        //create the destination folder on first run.
         Directory.CreateDirectory(dir);
 
-        // file path
+        //filename encodes site, calibration type and model version so overlapping runs don't collide.
         string filePath = Path.Combine(dir,
             $"calibParam_{siteID.Trim('\"')}_{calibrationType}_{modelVersion}.csv");
 
-        // write the parameter file
+        //bulk write the parameter CSV.
         File.WriteAllLines(filePath, writeParam);
         #endregion
 
-        //empty dictionary of dates and outputs objects
+        //buffer for the per-day output records produced by the one-shot run below.
         var dateOutputs = new Dictionary<DateTime, output>();
-        //execute model with calibrated parameters
+        //replay the simulation with the just-calibrated parameters and dump the daily trajectories.
         optimizer.oneShot(paramCalibValue, out dateOutputs);
 
-        //message to console
+        //progress trace at the end of each site.
         Console.WriteLine("site {0} calibrated", siteID);
 
     }
@@ -249,26 +267,24 @@ else
 
     #region loop over pixels
 
-    //set pixel to calibrate
+    //pooled calibration: all sites feed a single joint objective function.
     optimizer.idSite = allSites;
 
     #region define parameters settings for calibration
-    //count parameters under calibration
+    //count of active parameters — same pattern as the per-site branch above.
     int paramCalibrated = 0;
-    //loop over parameters
     foreach (var name in optimizer.species_nameParam[species].Keys)
     {
-        //add parameter to calibration if calibration field is not empty (x)
+        //non-empty calibration flag → active parameter.
         if (optimizer.species_nameParam[species][name].calibration != "") { paramCalibrated++; }
 
     }
-    //set number of dimension in the matrix
+    //allocate the simplex bounds matrix.
     double[,] Limits = new double[paramCalibrated, 2];
 
-    //parameters out of calibration
+    //fixed-parameter dictionary (non-calibrated).
     Dictionary<string, float> param_outCalibration = new Dictionary<string, float>();
-    //populate limits 
-    //count parameters under calibration
+    //populate Limits[] + param_outCalibration in one pass over the parameter set.
     int i = 0;
     foreach (var name in optimizer.species_nameParam[species].Keys)
     {
@@ -280,33 +296,37 @@ else
         }
         else
         {
+            //fixed value for parameters that should NOT be calibrated.
             param_outCalibration.Add(name, optimizer.species_nameParam[species][name].value);
         }
     }
+    //placeholder for the simplex result matrix.
     double[,] results = new double[1, 1];
     #endregion
 
-    //set optimizer calibration properties
+    //push species tag and fixed-parameter dictionary onto the optimizer.
     optimizer.species = species;
-  
+
     optimizer.param_outCalibration = param_outCalibration;
 
-    //run optimizer
+    //run the pooled multi-start simplex.
     msx.Multistart(optimizer, paramCalibrated, Limits, out results);
 
-    //get calibrated parameters
+    //harvest the best parameter vector.
     paramCalibValue = new Dictionary<string, float>();
     int count = 0;
 
     #region write calibrated parameters
+    //CSV schema — note the (unused) leading space which the post-processing R code strips.
     string header = "param, value";
     List<string> writeParam = new List<string>();
     writeParam.Add(header);
+    //walk parameters in optimizer order so indices align with `results`.
     foreach (var param in optimizer.species_nameParam[species].Keys)
     {
         if (optimizer.species_nameParam[species][param].calibration != "")
         {
-            //write a line for each parameter
+            //emit "name,value" + mirror into paramCalibValue for the downstream one-shot run.
             string line = "";
             line += param + ",";
             line += results[0, count];
@@ -316,26 +336,25 @@ else
         }
     }
 
-    //write calibrated parameters to file
-    // directory
+    //pooled-calibration output folder (one file per variable × model version).
     string dir = Path.Combine("calibratedPixels", calibrationVariable);
 
-    // create the directory if it does not exist
+    //create the destination folder on first run.
     Directory.CreateDirectory(dir);
 
-    // file path
+    //filename: no per-site suffix because the calibration is pooled.
     string filePath = Path.Combine(
         dir,
         $"calibParam_{calibrationType}_{modelVersion}.csv"
     );
 
-    // write the parameter file
+    //bulk write the parameter CSV.
     File.WriteAllLines(filePath, writeParam);
     #endregion
 
-    //empty dictionary of dates and outputs objects
+    //buffer for the per-day output records produced by the one-shot run below.
     var dateOutputs = new Dictionary<DateTime, output>();
-    //execute model with calibrated parameters
+    //replay the simulation across all sites with the calibrated parameters and dump the daily trajectories.
     optimizer.oneShot(paramCalibValue, out dateOutputs);
 
     #endregion

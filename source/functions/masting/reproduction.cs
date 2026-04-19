@@ -206,74 +206,80 @@ namespace source.functions
         /// </summary>
         public void pollinationDynamics(input input, parameters parameters, output output, output outputT1)
         {
-            //set the limits for flowering
+            //flowering window expressed as a percentage of growth completion (symmetric around floweringTime).
             float startFlowering =  parameters.parReproduction.floweringTime - parameters.parReproduction.floweringDuration / 2F;
             float endFlowering =  parameters.parReproduction.floweringTime + parameters.parReproduction.floweringDuration / 2F;
+            //guard against a negative start that could occur for very short flowering durations.
             if (startFlowering < 0) startFlowering = 0;
 
+            //we are inside the flowering window: accumulate potential and actual pollination.
             if (outputT1.growthPercentage >= startFlowering && outputT1.growthPercentage <=endFlowering)
             {
-                //compute today pollination
-                float pollinationToday = 50F * 
+                //Gaussian-like potential pollination centred on floweringTime; 50F sets the peak so that daily increments sum to ≈100%.
+                float pollinationToday = 50F *
                     (float)Math.Exp(-1 / parameters.parReproduction.floweringDuration *
-                    (float)Math.Pow(10, 4) * (float)Math.Pow((outputT1.growthPercentage / 
+                    (float)Math.Pow(10, 4) * (float)Math.Pow((outputT1.growthPercentage /
                     100F - parameters.parReproduction.floweringTime/100F), 2));
 
-                //compute pollination rate
+                //today's potential pollination increment (finite-difference derivative of the Gaussian).
                 float pollinationPotentialRate = pollinationToday-output.reproduction.pollinationPotentialState;
 
-                //compute pollination efficiency
+                //precipitation veto: wet days suppress pollen transfer.
                 float pollinationEfficiencyPrecipitation = utils.pollinationEfficiencyPrecipitation(input, parameters);
                 float weatherPollinationEffect = pollinationEfficiencyPrecipitation;
-             
-                //compute actual pollination rate
+
+                //apply the precipitation veto asymmetrically across the rising and falling arms of the Gaussian.
                 float pollinationActualRate = 0;
                 if (pollinationPotentialRate > 0)
                 {
+                    //rising limb: actual = potential · efficiency.
                     pollinationActualRate = pollinationPotentialRate * weatherPollinationEffect;
                 }
                 else
                 {
+                    //falling limb: already-pollinated flowers are lost at the weather-modulated rate.
                     pollinationActualRate = pollinationPotentialRate + (pollinationPotentialRate * (1 - weatherPollinationEffect));
                 }
 
-                //update pollination potential
+                //store today's potential pollination state (percentage scale).
                 outputT1.reproduction.pollinationPotentialState = pollinationToday;
 
-                //update actual pollination 
+                //integrate actual pollination state and clip negatives from the falling limb.
                 outputT1.reproduction.pollinationActualState = output.reproduction.pollinationActualState + pollinationActualRate;
 
                 if (outputT1.reproduction.pollinationActualState < 0) outputT1.reproduction.pollinationActualState = 0;
 
-                //update the budget
+                //debit today's share of the flowering investment from the resource budget.
                 outputT1.resources.resourceBudget = outputT1.resources.resourceBudget - (outputT1.reproduction.floweringInvestment* Math.Abs(pollinationPotentialRate / 100F));
 
                 if(outputT1.resources.resourceBudget < 0) { outputT1.resources.resourceBudget = 0; }
 
-                //update pollination efficiency 
+                //pollination efficiency bookkeeping — separated from pollinationActualState so that weather losses are tracked explicitly.
                 if (pollinationPotentialRate > 0)
                 {
                     outputT1.reproduction.pollinationEfficiency = output.reproduction.pollinationEfficiency + pollinationActualRate;
                 }
                 else
                 {
-                    outputT1.reproduction.pollinationEfficiency = output.reproduction.pollinationEfficiency + 
+                    outputT1.reproduction.pollinationEfficiency = output.reproduction.pollinationEfficiency +
                         Math.Abs(pollinationPotentialRate * weatherPollinationEffect);
                 }
             }
             else if (outputT1.growthPercentage >= endFlowering)
-            {            
+            {
 
+                //end of flowering: scale all investments by the realised pollination efficiency.
                 if(!outputT1.isFloweringCompleted && outputT1.phenoCode == 3)
                 {
                     outputT1.reproduction.floweringInvestment *= output.reproduction.pollinationEfficiency/100;
                     outputT1.reproduction.ripeningInvestment *= output.reproduction.pollinationEfficiency/100;
-                    outputT1.reproduction.reproductionInvestment *= output.reproduction.pollinationEfficiency / 100;                   
+                    outputT1.reproduction.reproductionInvestment *= output.reproduction.pollinationEfficiency / 100;
                     outputT1.isFloweringCompleted = true;
                 }
             }
             else
             {
+                //before flowering: zero-initialise the pollination trackers for the current year.
                 outputT1.reproduction.pollinationActualState = 0;
                 outputT1.reproduction.pollinationPotentialState = 0;
                 outputT1.reproduction.pollinationEfficiency = 0;
@@ -291,36 +297,40 @@ namespace source.functions
         public void ripeningDynamics(input input, parameters parameters, output output, output outputT1)
         {
 
+            //ripening is active only during the greendown phenophase (phenoCode 4).
             if (outputT1.phenoCode == 4)
             {
+                //today's cumulative potential ripening fraction (sigmoidal in greendownPercentage).
                 float ripeningToday = utils.ripeningDynamicsFunction(input, outputT1, parameters);
 
-                //compute ripening potential rate
+                //today's potential ripening increment (finite difference of the sigmoid).
                 float ripeningPotRateIncrease = (ripeningToday - output.reproduction.ripeningPotentialIncrease);
                 outputT1.reproduction.ripeningPotentialIncrease = ripeningToday;
 
-                //compute ripening efficiency
+                //actual ripening is reduced by drought stress: rate = potential · waterStressRate.
                 float ripeningActRateIncrease = ripeningPotRateIncrease * outputT1.resources.waterStressRate;
 
-                //update actual ripening 
+                //integrate actual ripening state (seed mass accumulated so far).
                 outputT1.reproduction.ripeningActualState = output.reproduction.ripeningActualState +
                     ripeningActRateIncrease * outputT1.reproduction.ripeningInvestment;
 
-                //update potential ripening
+                //integrate potential ripening state (counterfactual without water stress).
                 outputT1.reproduction.ripeningPotentialState = output.reproduction.ripeningActualState +
                     ripeningPotRateIncrease * outputT1.reproduction.ripeningInvestment;
 
-                //compute saving resources
+                //derive today's actual and potential rates from the state integrals.
                 float ripeningActualRate = (outputT1.reproduction.ripeningActualState - output.reproduction.ripeningActualState);
                 float ripeningPotentialRate = (outputT1.reproduction.ripeningPotentialState - output.reproduction.ripeningActualState);
 
+                //resources that would have been spent on aborted seeds are returned to the budget (Bogdziewicz et al. 2018 veto).
                 outputT1.resources.savedResources = (ripeningPotentialRate - ripeningActualRate);
-                
 
-                //update budget resources
+
+                //budget update: debit actual ripening, credit back the saved resources.
                 outputT1.resources.resourceBudget = outputT1.resources.resourceBudget - ripeningActualRate + outputT1.resources.savedResources;
 
 
+                //safety: never let the budget go below zero.
                 if (outputT1.resources.resourceBudget < 0)
                 {
                     outputT1.resources.resourceBudget = 0;
@@ -328,13 +338,13 @@ namespace source.functions
             }
             else if (outputT1.declinePercentage > 0)
             {
-                //reset fruits during dormancy
+                //during dormancy (phenoCode 2) any un-dispersed seed carried over is reset to zero for the new cycle.
                 if(outputT1.phenoCode==2 && outputT1.reproduction.ripeningActualState>0)
                 {
                     outputT1.reproduction.ripeningActualState = 0;
                     output.reproduction.ripeningActualState = 0;
                 }
-            }            
+            }
         }
     }
 }
