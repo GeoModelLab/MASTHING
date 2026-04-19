@@ -1,0 +1,76 @@
+# This CITATION.cff file tells GitHub, Zenodo, and other tools how to cite MASTHING.
+# Format spec: https://citation-file-format.github.io/
+# Validator: https://cff-validator.readthedocs.io/
+
+cff-version: 1.2.0
+title: "MASTHING: a process-based model of mast seeding in European beech"
+message: "If you use this software, please cite both the software and the companion paper."
+type: software
+authors:
+  - family-names: Bregaglio
+    given-names: Simone
+    email: simoneugomaria.bregaglio@crea.gov.it
+    affiliation: "Council for Agricultural Research and Economics (CREA), GeoModel Lab, Research Centre for Agriculture and Environment, Italy"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"   # <-- add your ORCID here
+  - family-names: Bajocco
+    given-names: Sofia
+    affiliation: "Council for Agricultural Research and Economics (CREA), GeoModel Lab, Research Centre for Agriculture and Environment, Italy"
+  - family-names: Ferrara
+    given-names: Carlotta
+    affiliation: "Council for Agricultural Research and Economics (CREA), Research Centre for Forestry and Wood, Italy"
+  - family-names: Bogdziewicz
+    given-names: Michał
+    affiliation: "Forest Biology Center, Institute of Environmental Biology, Faculty of Biology, Adam Mickiewicz University, Poznań, Poland"
+  - family-names: Hacket-Pain
+    given-names: Andrew
+    affiliation: "Department of Geography and Planning, School of Environmental Sciences, University of Liverpool, United Kingdom"
+  - family-names: Chianucci
+    given-names: Francesco
+    affiliation: "Council for Agricultural Research and Economics (CREA), Research Centre for Forestry and Wood, Italy"
+repository-code: "https://github.com/GeoModelLab/MASTHING"
+url: "https://github.com/GeoModelLab/MASTHING"
+abstract: >-
+  MASTHING (MASting THeory modellING) is an individual-tree, process-based
+  simulation model of mast seeding that couples phenology, carbon gain,
+  resource storage, temperature cues and environmental vetoes on plant
+  reproduction. The model is parameterized for European beech
+  (Fagus sylvatica L.) and supports hypothesis testing on the proximate
+  mechanisms driving masting (resource budget only, additive weather cues,
+  interactive weather cues), evaluation of climate-change impacts on
+  reproductive dynamics, and near-term seed forecasting for forest
+  management.
+keywords:
+  - masting
+  - mast seeding
+  - European beech
+  - Fagus sylvatica
+  - process-based model
+  - forest ecology
+  - climate change
+  - seed forecasting
+  - resource budget
+  - weather cues
+license: MIT
+version: "1.0.0"
+date-released: "2026-04-18"
+
+# Preferred citation: the companion paper.
+preferred-citation:
+  type: article
+  title: "MASTHING: a process-based model of mast seeding in European beech"
+  authors:
+    - family-names: Bregaglio
+      given-names: Simone
+    - family-names: Bajocco
+      given-names: Sofia
+    - family-names: Ferrara
+      given-names: Carlotta
+    - family-names: Bogdziewicz
+      given-names: Michał
+    - family-names: Hacket-Pain
+      given-names: Andrew
+    - family-names: Chianucci
+      given-names: Francesco
+  year: 2026
+  # journal: "TBD"
+  # doi: "10.xxxx/xxxxxx"

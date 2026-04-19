@@ -1,0 +1,12 @@
+{
+  "settings": {
+    "calibrationVariable": "seeds",
+    "species": "beech",
+    "weatherDirectory": "..\\..\\..\\files\\weatherData",
+    "numberSimplexes": "5",
+    "numberIterations": "11865678",
+    "modelVersion": "RB",
+    "calibrationType": "single",
+    "sitesToRun": ["SampleSite"]
+  }
+}
