@@ -14,7 +14,7 @@ section at the end, or open an issue on GitHub.
 
 1. [What MASTHING does](#1-what-masthing-does)
 2. [System requirements](#2-system-requirements)
-3. [Install the .NET 6 SDK](#3-install-the-net-6-sdk)
+3. [Install the .NET 8 SDK](#3-install-the-net-8-sdk)
 4. [Get the code](#4-get-the-code)
 5. [Build MASTHING](#5-build-masthing)
 6. [Organise the input files](#6-organise-the-input-files)
@@ -69,16 +69,16 @@ modern laptop.
 
 ---
 
-## 3. Install the .NET 6 SDK
+## 3. Install the .NET 8 SDK
 
-MASTHING targets .NET 6.0 (LTS).
+MASTHING targets .NET 8.0 (LTS).
 
 - **Windows / macOS**: download the SDK installer from
-  <https://dotnet.microsoft.com/download/dotnet/6.0> and follow the
+  <https://dotnet.microsoft.com/download/dotnet/8.0> and follow the
   wizard.
 - **Linux (Ubuntu)**: follow the apt instructions at the same URL, e.g.
   ```bash
-  sudo apt-get install -y dotnet-sdk-6.0
+  sudo apt-get install -y dotnet-sdk-8.0
   ```
 
 Verify the installation by opening a terminal / PowerShell and running:
@@ -87,8 +87,8 @@ Verify the installation by opening a terminal / PowerShell and running:
 dotnet --list-sdks
 ```
 
-You should see a `6.0.x` line. Anything newer (`7.0`, `8.0`) also works
-because .NET is backward compatible, but 6.0 is what we test against.
+You should see an `8.0.x` line. Anything newer (`9.0`, ...) also works
+because .NET is backward compatible, but 8.0 is what we test against.
 
 ---
 
@@ -129,7 +129,7 @@ application in release mode.
 
 If the build completes with `Build succeeded.` you're ready to go. The
 runner binary is produced under
-`runner/bin/Release/net6.0/runner.exe` (or `runner` on macOS/Linux).
+`runner/bin/Release/net8.0/runner.exe` (or `runner` on macOS/Linux).
 
 ---
 
@@ -201,11 +201,26 @@ extension). The columns expected by `weatherReader` are (see
 `runner/readers/weatherReader.cs` for details):
 
 ```
-date, airTemperatureMaximum, airTemperatureMinimum, precipitation, solarRadiation
+lat, long, date, tmin, tmax, prec
 ```
 
-Date format is ISO-like (`yyyy-MM-dd`), temperatures are in °C,
-precipitation in mm day-1, global solar radiation in MJ m-2 day-1.
+Notes:
+
+- `date` is parsed with `Convert.ToDateTime`; either `yyyy-MM-dd` or
+  `M/d/yyyy` work under invariant culture.
+- `tmin` and `tmax` are daily minimum and maximum air temperatures (°C).
+  If `tmin` is missing (`NA`) the reader falls back to `tmax − 10 °C`.
+- `prec` is daily precipitation (mm day-1).
+- `lat` and `long` are decimal degrees; the reader uses `lat` to derive
+  day length and extraterrestrial radiation.
+- **Global solar radiation is not required in the CSV**: it is estimated
+  internally from Tmax/Tmin via the Hargreaves-Samani relation
+  (`utils.astronomy()` → `utils.globalSolarRadiation()`).
+- The reader automatically **replicates the first available record
+  backward for 8 years (1970–1978)** to provide a spin-up for the
+  phenology, carbon and reproduction state variables before the first
+  observed year.
+
 Daily ERA5 reanalysis downloads from Copernicus or Google Earth Engine
 are a convenient source.
 
@@ -242,7 +257,7 @@ Meaning of each field:
 - **`weatherDirectory`** — path to the weather folder, relative to the
   runner binary working directory. The default
   `..\..\..\files\weatherData` walks from
-  `runner/bin/Release/net6.0/` back up to the repository root and then
+  `runner/bin/Release/net8.0/` back up to the repository root and then
   into `files/weatherData/`.
 - **`numberSimplexes`** — number of multi-start restarts of the
   downhill Simplex. 5–10 is a reasonable trade-off.
@@ -418,7 +433,7 @@ terminal, or on macOS/Linux add `$HOME/.dotnet` to your shell PATH.
 **`FileNotFoundException: SWELLparameters.csv`** — the runner expects
 the `files/` folder next to the repository root, and it resolves paths
 relative to the binary working directory
-(`runner/bin/Release/net6.0/`). The default JSON uses
+(`runner/bin/Release/net8.0/`). The default JSON uses
 `..\..\..\files\weatherData` for that reason. Run the program via
 `dotnet run` from the `runner/` folder to keep the working directory
 consistent.
