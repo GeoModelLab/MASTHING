@@ -2,8 +2,6 @@
   <img src="assets/logo.png" alt="MASTHING logo" width="420">
 </p>
 
-# MASTHING
-
 **MAS**ting **TH**eory modell**ING** — a process-based model of mast seeding in European beech (*Fagus sylvatica* L.)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
