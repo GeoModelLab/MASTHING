@@ -6,9 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![.NET 8.0](https://img.shields.io/badge/.NET-8.0-blueviolet)](https://dotnet.microsoft.com/)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
-
-> After you archive the repository on Zenodo, replace `XXXXXXX` in the badge above with the DOI provided by Zenodo.
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19660460.svg)](https://doi.org/10.5281/zenodo.19660460)
 
 ---
 
@@ -240,7 +238,7 @@ If you use MASTHING in your research please cite **both** the software and the c
   version      = {1.0.0},
   year         = {2026},
   publisher    = {Zenodo},
-  doi          = {10.5281/zenodo.XXXXXXX},
+  doi          = {10.5281/zenodo.19660460},
   url          = {https://github.com/GeoModelLab/MASTHING}
 }
 ```
@@ -282,8 +280,4 @@ This work was funded by:
 - Ferrero Trading Lux — HAZIMUT project;
 - European Research Council — ForestFuture (101039066).
 
-Views and opinions expressed are those of the authors only and do not necessarily reflect those of the European Union or the European Research Council.
-
-## License
-
-MASTHING is released under the [MIT License](./LICENSE). You are free to use, modify and redistribute the code, including for commercial purposes, with attribution.
+Views and opinions expressed are those of the authors only

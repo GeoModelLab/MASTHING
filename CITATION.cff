@@ -52,7 +52,11 @@ keywords:
   - weather cues
 license: MIT
 version: "1.0.0"
-date-released: "2026-04-18"
+date-released: "2026-04-20"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.19660460"
+    description: "Zenodo software concept DOI (always resolves to the latest MASTHING release)"
 
 # Preferred citation: the companion paper.
 preferred-citation:
