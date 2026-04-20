@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="MASTHING logo" width="360">
+  <img src="assets/logo.png" alt="MASTHING logo" width="420">
 </p>
 
 # MASTHING
