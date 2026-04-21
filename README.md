@@ -110,8 +110,7 @@ Edit `runner/MASTHINGconfig.json`:
     "modelVersion":        "RBxWC",
     "calibrationType":     "single",
     "sitesToRun": [
-      "Buckholt", "Benwell", "FishHill", "HimleyHall", "Killerton",
-      "Nettlebed", "Painswick", "Patcham", "Ripon", "Spennymoor", "Woodbury"
+      "SampleSite"
     ]
   }
 }
